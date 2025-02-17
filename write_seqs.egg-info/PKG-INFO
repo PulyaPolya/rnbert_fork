@@ -1,0 +1,28 @@
+Metadata-Version: 2.2
+Name: write_seqs
+Version: 0.0.1
+Summary: TODO
+Home-page: TODO
+Author: Malcolm Sailor
+Author-email: malcolm.sailor@gmail.com
+Project-URL: Bug Tracker, TODO
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Description-Content-Type: text/markdown
+Requires-Dist: pandas
+Requires-Dist: pyyaml
+Requires-Dist: omegaconf
+Requires-Dist: dacite
+Requires-Dist: music_df
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: summary
+
+TODO
