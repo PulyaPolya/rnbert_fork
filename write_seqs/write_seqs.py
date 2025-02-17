@@ -10,13 +10,12 @@ import typing as t
 from fractions import Fraction
 from functools import cached_property
 from pathlib import Path
-
-
+import pathlib                                                            # modified
 import pandas as pd
 import yaml
 from music_df.add_feature import concatenate_features
-from reprs import ReprEncodeError
-import sys
+from reprs.reprs import ReprEncodeError                                      # modified
+
 import multiprocessing
 
 try:
@@ -237,7 +236,7 @@ class CSVChunkWriter:
                     path = self._fmt_str.format(
                         self._shared_file_counter.value  # type:ignore
                     )
-            self._outf = open(path, "w", newline="")
+            self._outf = open(path, "w", newline="", encoding="utf-8")
             self._writer = csv.writer(self._outf, delimiter=",")
             self._writer.writerow(self._header)
         self._writer.writerow(row)
@@ -287,47 +286,50 @@ def write_item(
             augmented_df = get_concatenated_features(
                 augmented_df, seq_settings, features
             )
-            encoded = repr_settings.encode_f(
-                augmented_df, repr_settings, feature_names=features
-            )
-            # (Malcolm 2023-12-01) We use the int hash to set the start offset in a
-            #   deterministic way. However, it will be the same for every augmentation.
-            #   It would be nice to make a different, but deterministic, hash for
-            #   every augmentation.
-            assert seq_settings.window_len is not None
-            start_i = 0 - item.int_hash % seq_settings.window_len
-
-            sequence_level_features = get_sequence_level_features(
-                augmented_df, seq_settings
-            )
-
-            transpose, scaled_by = get_df_attrs(augmented_df)
-
-            for i, segment in enumerate(
-                encoded.segment(
-                    seq_settings.window_len, seq_settings.hop, start_i=start_i
+            try:
+                encoded = repr_settings.encode_f(
+                    augmented_df, repr_settings, feature_names=features
                 )
-            ):
-                feature_segments = [
-                    " ".join(str(x) for x in segment[f]) for f in features
-                ]
-                if sys.stdin.isatty():
+                # (Malcolm 2023-12-01) We use the int hash to set the start offset in a
+                #   deterministic way. However, it will be the same for every augmentation.
+                #   It would be nice to make a different, but deterministic, hash for
+                #   every augmentation.
+                assert seq_settings.window_len is not None
+                start_i = 0 - item.int_hash % seq_settings.window_len
+
+                sequence_level_features = get_sequence_level_features(
+                    augmented_df, seq_settings
+                )
+
+                transpose, scaled_by = get_df_attrs(augmented_df)
+
+                for i, segment in enumerate(
+                    encoded.segment(
+                        seq_settings.window_len, seq_settings.hop, start_i=start_i
+                    )
+                ):
+                    feature_segments = [
+                        " ".join(str(x) for x in segment[f]) for f in features
+                    ]
                     print("-\\|/"[i % 4], end="\r", flush=True)
-                write_symbols(
-                    csv_chunk_writer,
-                    item.score_id,
-                    item.score_path,
-                    item.csv_path,
-                    transpose,
-                    scaled_by,
-                    segment["segment_onset"],  # type:ignore
-                    segment["df_indices"],
-                    " ".join(segment["input"]),  # type:ignore
-                    *feature_segments,
-                    *sequence_level_features,
-                )
-    except ReprEncodeError as exc:
-        LOGGER.warning(f"Skipping encoding {item.csv_path} due to {repr(exc)}")
+                    write_symbols(
+                        csv_chunk_writer,
+                        item.score_id,
+                        item.score_path,
+                        item.csv_path,
+                        transpose,
+                        scaled_by,
+                        segment["segment_onset"],  # type:ignore
+                        segment["df_indices"],
+                        " ".join(segment["input"]),  # type:ignore
+                        *feature_segments,
+                        *sequence_level_features,
+                    )
+            except ReprEncodeError:
+                LOGGER.warning(f"encoding {item.csv_path} failed, skipping")
+
+    except ReprEncodeError:
+        LOGGER.warning(f"encoding {item.csv_path} failed, skipping")
 
 
 COLUMNS = [
@@ -423,8 +425,8 @@ def write_data(
 
     init_dirs(output_folder)
 
-    if n_workers > 1:
-        pool = multiprocessing.Pool(processes=n_workers)
+    pool = multiprocessing.Pool(processes=n_workers)
+    try:
         pool.starmap(
             write_data_worker,
             [
@@ -444,23 +446,10 @@ def write_data(
                 for i, data_chunk in enumerate(item_chunks)
             ],
         )
-        pool.close()
-        pool.join()
-    else:
-        for i, data_chunk in enumerate(item_chunks):
-            write_data_worker(
-                i * chunk_size,
-                len(items),
-                data_chunk,
-                shared_file_counter,
-                lock,
-                format_path,
-                features,
-                seq_settings,
-                repr_settings,
-                verbose,
-                split,
-            )
+    except Exception as e:
+        print("didn't go well ",e)
+    pool.close()
+    pool.join()
 
 
 def write_vocab(
@@ -507,6 +496,7 @@ def write_vocab(
     if missing_vocabs:
         for feature_i, feature in missing_vocabs:
             LOGGER.warning(f"Missing vocab file for {feature_i=}, {feature}")
+            #import pdb; pdb.set_trace()
 
 
 def get_existing_splits_if_possible(src_data_dir: str):
@@ -540,7 +530,7 @@ def get_items_from_input_paths(
             LOGGER.warning(f"Can't find {file_path}, skipping {kind} split")
             items.append([])
             continue
-        with open(file_path) as inf:
+        with open(file_path, encoding = "utf-8") as inf:
             split = [
                 unicodedata.normalize(
                     seq_settings.unicode_normalization_form,
@@ -549,7 +539,13 @@ def get_items_from_input_paths(
                 for p in inf.readlines()
             ]
         for p in split:
-            assert os.path.exists(p), f"{p} does not exist"
+            #assert os.path.exists(p), f"{p} does not exist"
+            print(f"Checking path: {repr(p)}")  # ✅ Debug output
+            encoded_path = p.encode("utf-8").decode()  # ✅ Normalize encoding
+            print(f"Encoded path: {repr(encoded_path)}")
+            if not os.path.exists(encoded_path):
+                print(f"ERROR: {encoded_path} does not exist")  # ✅ Debug
+                #raise FileNotFoundError(f"{encoded_path} does not exist")
         items.append(
             [CorpusItem(p, drop_spelling=seq_settings.drop_spelling) for p in split]
         )
